@@ -79,7 +79,7 @@ for ARCH in ${ARCHS[@]}; do
   # https://github.com/juce-framework/JUCE/blob/53b04877c6ebc7ef3cb42e84cb11a48e0cf809b5/modules/juce_gui_basics/native/accessibility/juce_win32_ComInterfaces.h#L123-L174
   # https://github.com/mingw-w64/mingw-w64/blob/2f6d8b806107cc8d543de2c9415a328a780a8267/mingw-w64-headers/include/uiautomationclient.h#L34-L450
   # unfortunately juce_win32_ComInterfaces.h isn't a complete list, so we have to define any constant that's absent
-  CMAKE_CXX_FLAGS="-D__UIAutomationClient_LIBRARY_DEFINED__ $UIA_DEFINES"
+  CMAKE_CXX_FLAGS="-std=gnu++17 -D__UIAutomationClient_LIBRARY_DEFINED__ $UIA_DEFINES"
 
   # MODULE_LINKER flags are for the VST2/VST3 modules (they don't listen to the EXE_LINKER flags)
   VERBOSE=1 PKG_CONFIG_PATH="/$REPO/lib/pkgconfig" cmake -B"$BUILD" \

@@ -32,6 +32,7 @@ for ARCH in ${ARCHS[@]}; do
   # Yet, our priority is "statically-link everything" (in order to build a single-file binary,
   # which can be installed by drag-and-drop).
   PKG_CONFIG_PATH="/$REPO/lib/pkgconfig" cmake -B"$BUILD" -DCMAKE_INSTALL_PREFIX="/$REPO" \
+-DCMAKE_C_FLAGS="-DGLIB_STATIC_COMPILATION -DPCRE2_STATIC" \
 -DBUILD_SHARED_LIBS=off \
 -Denable-portaudio=off \
 -Denable-dbus=off \

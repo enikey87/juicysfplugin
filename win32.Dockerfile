@@ -1,9 +1,19 @@
-# docker build . -f win32.Dockerfile --tag=llvm-mingw
-# docker run -it --rm --name llvm-mingw llvm-mingw
+# Single-command build (produces ./out/win_x64/VST2/libjuicysfplugin.dll):
+#   DOCKER_BUILDKIT=1 docker buildx build -f win32.Dockerfile \
+#     --target output --output type=local,dest=./out .
+#
+# If you are behind a proxy or your host DNS is unreliable, add:
+#   --network=host \
+#   --build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTPS_PROXY
+#
+# The classic two-step flow still works if you prefer a tagged image + bundle:
+#   DOCKER_BUILDKIT=1 docker build . -f win32.Dockerfile --tag=llvm-mingw
+#   ./distribute/bundle_win32.sh 3.1.0
 ARG UBUNTU_VER=22.04
 
 FROM ubuntu:$UBUNTU_VER AS wgetter
-RUN apt-get update -qq && \
+RUN echo 'Acquire::Retries "10"; Acquire::http::Timeout "30";' > /etc/apt/apt.conf.d/80-retries && \
+apt-get update -qq && \
 apt-get install -qqy --no-install-recommends \
 wget ca-certificates && \
 apt-get clean -y && \
@@ -11,8 +21,19 @@ rm -rf /var/lib/apt/lists/*
 
 FROM wgetter AS get_llvm_mingw
 COPY win32_cross_compile/download_llvm_mingw.sh download_llvm_mingw.sh
-ARG LLVM_MINGW_VER=20220209
+ARG LLVM_MINGW_VER=20260616
 RUN LLVM_MINGW_VER=$LLVM_MINGW_VER ./download_llvm_mingw.sh download_llvm_mingw.sh
+
+# Fetches Steinberg VST 2.4 headers (aeffect.h, aeffectx.h, vstfxstore.h) that
+# JUCE needs to emit a VST2 module. Steinberg discontinued distribution in 2018;
+# we pull from public GPL/BSD projects that ship them. This is grey-area
+# licensing; the resulting DLL must not be published without a VST2 license
+# decision.
+FROM wgetter AS get_vst2_sdk
+RUN mkdir -p /VST2_SDK/pluginterfaces/vst2.x && \
+    wget -q -O /VST2_SDK/pluginterfaces/vst2.x/aeffect.h    https://raw.githubusercontent.com/pac-dev/protoplug/master/Frameworks/vstsdk2.4_minimal/pluginterfaces/vst2.x/aeffect.h && \
+    wget -q -O /VST2_SDK/pluginterfaces/vst2.x/aeffectx.h   https://raw.githubusercontent.com/pac-dev/protoplug/master/Frameworks/vstsdk2.4_minimal/pluginterfaces/vst2.x/aeffectx.h && \
+    wget -q -O /VST2_SDK/pluginterfaces/vst2.x/vstfxstore.h https://raw.githubusercontent.com/R-Tur/VST_SDK_2.4/master/pluginterfaces/vst2.x/vstfxstore.h
 
 FROM ubuntu:$UBUNTU_VER AS gitter
 RUN apt-get update -qq && \
@@ -36,9 +57,7 @@ xz-utils cmake build-essential pkg-config && \
 apt-get clean -y && \
 rm -rf /var/lib/apt/lists/*
 COPY --from=get_llvm_mingw llvm-mingw.tar.xz llvm-mingw.tar.xz
-# here's how to merge it into existing /bin, but that could have unintended clashes
-# RUN tar -xvf llvm-mingw.tar.xz --strip-components=1 -k && rm llvm-mingw.tar.xz
-RUN mkdir -p /opt/llvm-mingw && tar -xvf llvm-mingw.tar.xz --strip-components=1 -C /opt/llvm-mingw && rm llvm-mingw.tar.xz
+RUN mkdir -p /opt/llvm-mingw && tar -xf llvm-mingw.tar.xz --strip-components=1 -C /opt/llvm-mingw && rm llvm-mingw.tar.xz
 ENV PATH="/opt/llvm-mingw/bin:$PATH"
 COPY win32_cross_compile/x86_64_toolchain.cmake /x86_64_toolchain.cmake
 COPY win32_cross_compile/i686_toolchain.cmake /i686_toolchain.cmake
@@ -47,7 +66,7 @@ COPY win32_cross_compile/aarch64_toolchain.cmake /aarch64_toolchain.cmake
 FROM ubuntu:$UBUNTU_VER AS make_juce
 RUN apt-get update -qq && \
 apt-get install -qqy --no-install-recommends \
-cmake build-essential pkg-config libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev && \
+cmake build-essential pkg-config libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev libfontconfig1-dev libcurl4-openssl-dev libasound2-dev libglu1-mesa-dev && \
 apt-get clean -y && \
 rm -rf /var/lib/apt/lists/*
 COPY --from=get_juce JUCE JUCE
@@ -82,25 +101,22 @@ RUN ./build_fluidsynth.sh x64
 FROM toolchain AS juicysfplugin_common
 RUN apt-get update -qq && \
 apt-get install -qqy --no-install-recommends \
-libfreetype6-dev && \
+libfreetype6-dev libfontconfig1 && \
 apt-get clean -y && \
 rm -rf /var/lib/apt/lists/*
 COPY --from=make_juce /linux_native/ /linux_native/
-COPY --from=msys2_deps /clang32/ /clang32/
 COPY --from=msys2_deps /clang64/ /clang64/
 COPY --from=make_fluidsynth_x64 /clang64/include/fluidsynth.h /clang64/include/fluidsynth.h
 COPY --from=make_fluidsynth_x64 /clang64/include/fluidsynth/ /clang64/include/fluidsynth/
 COPY --from=make_fluidsynth_x64 /clang64/lib/pkgconfig/fluidsynth.pc /clang64/lib/pkgconfig/fluidsynth.pc
 COPY --from=make_fluidsynth_x64 /clang64/lib/libfluidsynth.a /clang64/lib/libfluidsynth.a
-COPY --from=make_fluidsynth_x86 /clang32/include/fluidsynth.h /clang32/include/fluidsynth.h
-COPY --from=make_fluidsynth_x86 /clang32/include/fluidsynth/ /clang32/include/fluidsynth/
-COPY --from=make_fluidsynth_x86 /clang32/lib/pkgconfig/fluidsynth.pc /clang32/lib/pkgconfig/fluidsynth.pc
-COPY --from=make_fluidsynth_x86 /clang32/lib/libfluidsynth.a /clang32/lib/libfluidsynth.a
 COPY win32_cross_compile/fix_mingw_headers.sh fix_mingw_headers.sh
 RUN ./fix_mingw_headers.sh
 COPY win32_cross_compile/attrib_noop.sh /usr/local/bin/attrib
+COPY win32_cross_compile/juce_vst3_helper_noop.sh /usr/local/bin/juce_vst3_helper
+RUN chmod +x /usr/local/bin/attrib /usr/local/bin/juce_vst3_helper
 WORKDIR juicysfplugin
-COPY VST2_SDK/ /VST2_SDK/
+COPY --from=get_vst2_sdk /VST2_SDK/ /VST2_SDK/
 COPY resources/Logo512.png resources/Logo512.png
 COPY cmake/Modules/FindPkgConfig.cmake cmake/Modules/FindPkgConfig.cmake
 COPY Source/ Source/
@@ -108,18 +124,28 @@ COPY JuceLibraryCode/JuceHeader.h JuceLibraryCode/JuceHeader.h
 COPY CMakeLists.txt CMakeLists.txt
 COPY win32_cross_compile/configure_juicysfplugin.sh configure_juicysfplugin.sh
 
-FROM juicysfplugin_common AS juicysfplugin_x86
-RUN /juicysfplugin/configure_juicysfplugin.sh x86
-COPY win32_cross_compile/make_juicysfplugin.sh make_juicysfplugin.sh
-RUN /juicysfplugin/make_juicysfplugin.sh x86
-
 FROM juicysfplugin_common AS juicysfplugin_x64
 RUN /juicysfplugin/configure_juicysfplugin.sh x64
 COPY win32_cross_compile/make_juicysfplugin.sh make_juicysfplugin.sh
 RUN /juicysfplugin/make_juicysfplugin.sh x64
 
+# Keep the classic distribute stage so ./distribute/bundle_win32.sh 3.1.0
+# still works against `docker build --tag=llvm-mingw`.
 FROM ubuntu:$UBUNTU_VER AS distribute
-# x86 build fails in JUCE 6.1.5; problem compiling UUIDGetter
-# https://gist.github.com/Birch-san/a36b10155e51bd814ecc7109501e1e64
-# COPY --from=juicysfplugin_x86 /juicysfplugin/build_x86/JuicySFPlugin_artefacts/ /x86/
 COPY --from=juicysfplugin_x64 /juicysfplugin/build_x64/JuicySFPlugin_artefacts/ /x64/
+
+# Final target for BuildKit --output type=local,dest=./out
+# Layout mirrors what bundle_win32.sh produces, so downstream tooling is stable.
+FROM scratch AS output
+COPY --from=juicysfplugin_x64 \
+  /juicysfplugin/build_x64/JuicySFPlugin_artefacts/Release/VST/libjuicysfplugin.dll \
+  /win_x64/VST2/libjuicysfplugin.dll
+COPY --from=juicysfplugin_x64 \
+  /juicysfplugin/build_x64/JuicySFPlugin_artefacts/Release/Standalone/juicysfplugin.exe \
+  /win_x64/Standalone/juicysfplugin.exe
+COPY --from=juicysfplugin_x64 \
+  /juicysfplugin/build_x64/JuicySFPlugin_artefacts/Release/VST3/juicysfplugin.vst3/Contents/x86_64-win/juicysfplugin.vst3 \
+  /win_x64/VST3/juicysfplugin.vst3
+COPY LICENSE.txt /win_x64/LICENSE.txt
+COPY licenses_of_dependencies /win_x64/licenses_of_dependencies
+COPY distribute/README.x64.txt /win_x64/README.txt
