@@ -109,7 +109,9 @@ COPY --from=msys2_deps /clang64/ /clang64/
 COPY --from=make_fluidsynth_x64 /clang64/include/fluidsynth.h /clang64/include/fluidsynth.h
 COPY --from=make_fluidsynth_x64 /clang64/include/fluidsynth/ /clang64/include/fluidsynth/
 COPY --from=make_fluidsynth_x64 /clang64/lib/pkgconfig/fluidsynth.pc /clang64/lib/pkgconfig/fluidsynth.pc
-COPY --from=make_fluidsynth_x64 /clang64/lib/libfluidsynth.a /clang64/lib/libfluidsynth.a
+# FluidSynth 2.5.x installs the static lib as libfluidsynth-3.a (matches
+# `Libs: -lfluidsynth-3` in fluidsynth.pc). Older releases used libfluidsynth.a.
+COPY --from=make_fluidsynth_x64 /clang64/lib/libfluidsynth-3.a /clang64/lib/libfluidsynth-3.a
 COPY win32_cross_compile/fix_mingw_headers.sh fix_mingw_headers.sh
 RUN ./fix_mingw_headers.sh
 COPY win32_cross_compile/attrib_noop.sh /usr/local/bin/attrib

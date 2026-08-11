@@ -25,7 +25,10 @@ for ARCH in ${ARCHS[@]}; do
   cmake --build "$BUILD" --target libfluidsynth
   # manual installation; not sure how to ask it to "only install libfluidsynth".
   cp "$BUILD"/fluidsynth.pc "/$REPO/lib/pkgconfig/"
-  cp "$BUILD"/src/libfluidsynth*.a "/$REPO/lib/libfluidsynth.a"
+  # Preserve source name (fluidsynth 2.5.x builds libfluidsynth-3.a; older
+  # is libfluidsynth.a). pkg-config's `Libs: -lfluidsynth-N` must match the
+  # file name that llvm-mingw's linker searches for.
+  cp "$BUILD"/src/libfluidsynth*.a "/$REPO/lib/"
   mkdir -p /$REPO/include/fluidsynth
   cp include/fluidsynth/*.h "/$REPO/include/fluidsynth/"
   cp "$BUILD"/include/fluidsynth.h "/$REPO/include/fluidsynth.h"

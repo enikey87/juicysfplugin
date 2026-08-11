@@ -18,7 +18,7 @@ declare -A REPOS=( [x64]=clang64 [x86]=clang32 [arm64]=clangarm64 )
 declare -A PKG_PREFIX_ARCHS=( [x64]=x86_64 [x86]=i686 [arm64]=aarch64 )
 # https://waterlan.home.xs4all.nl/libintl.html
 # apparently libintl is part of gettext
-declare -a PKGS=("libiconv" "flac" "glib2" "libogg" "opus-1" "libvorbis" "pcre-" "pcre2" "libsndfile" "gettext-runtime")
+declare -a PKGS=("libiconv" "flac" "glib2" "libogg" "opus-1" "libvorbis" "pcre-" "pcre2" "libsndfile" "gettext-runtime" "mpg123" "lame")
 
 pids=()
 
