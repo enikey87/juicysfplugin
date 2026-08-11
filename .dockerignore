@@ -7,3 +7,6 @@
 !/cmake/Modules/FindPkgConfig.cmake
 !/VST2_SDK/**
 /VST2_SDK/README.md
+!/LICENSE.txt
+!/licenses_of_dependencies/**
+!/distribute/README.x64.txt

@@ -11,4 +11,7 @@ sed -i -E '/WINAPI UiaRaiseAutomationPropertyChangedEvent/ s/(VARIANT new)/\1_/g
 
 # JUCE includes UIAutomation.h
 # but mingw headers are lowercase, and filesystem is case-sensitive
-ln -s ./uiautomation.h /opt/llvm-mingw/generic-w64-mingw32/include/UIAutomation.h
+ln -sf ./uiautomation.h /opt/llvm-mingw/generic-w64-mingw32/include/UIAutomation.h
+
+# VST3 SDK's moduleinfotool includes <Windows.h>
+ln -sf ./windows.h /opt/llvm-mingw/generic-w64-mingw32/include/Windows.h
