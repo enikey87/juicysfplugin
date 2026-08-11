@@ -74,14 +74,18 @@ void FluidSynthModel::initialise() {
     fluid_audio_driver_register(DRV);
     
     settings = { new_fluid_settings(), delete_fluid_settings };
-    
+
     // https://sourceforge.net/p/fluidsynth/wiki/FluidSettings/
 #if JUCE_DEBUG
     fluid_settings_setint(settings.get(), "synth.verbose", 1);
 #endif
 
+    // Sample rate must be set on settings BEFORE new_fluid_synth; fluidsynth
+    // 2.5.4 turned fluid_synth_set_sample_rate() into a no-op that logs
+    // "no longer supported in this version of fluidsynth" on every render.
+    fluid_settings_setnum(settings.get(), "synth.sample-rate", currentSampleRate);
+
     synth = { new_fluid_synth(settings.get()), delete_fluid_synth };
-    fluid_synth_set_sample_rate(synth.get(), currentSampleRate);
 
     // Matches Songsterr's FluidSynth CLI (synth.gain=0.55); +11 dB (2.0) hard-clips dense material.
     fluid_synth_set_gain(synth.get(), 0.55);
@@ -328,14 +332,10 @@ void FluidSynthModel::refreshBanks() {
 }
 
 void FluidSynthModel::setSampleRate(float sampleRate) {
+    // Only records the rate; initialise() propagates it into the synth via
+    // fluid_settings_setnum before creating it. fluidsynth 2.5.4 removed the
+    // runtime setter, so mid-stream rate changes require re-initialise().
     currentSampleRate = sampleRate;
-    // https://stackoverflow.com/a/40856043/5257399
-    // test if a smart pointer is null
-    if (!synth) {
-        // don't worry; we'll do this in initialise phase regardless
-        return;
-    }
-    fluid_synth_set_sample_rate(synth.get(), sampleRate);
 }
 
 void FluidSynthModel::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midiMessages) {
@@ -425,13 +425,17 @@ void FluidSynthModel::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midiM
     // fluid_synth_get_cc(fluidSynth, 0, 73, &pval);
     // Logger::outputDebugString ( juce::String::formatted("hey: %d\n", pval) );
 
-    fluid_synth_process(
+    // Use fluid_synth_write_float — the same API the CLI file renderer uses.
+    // It automatically mixes reverb/chorus into the dry output (unlike
+    // fluid_synth_process, which since 2.1.0 also requires the caller to zero
+    // the output buffers on every call). Bit-identical to `fluidsynth -F` in
+    // parity tests, whereas fluid_synth_process(nfx=0, ...) dropped effects.
+    jassert(buffer.getNumChannels() >= 2);
+    fluid_synth_write_float(
         synth.get(),
         buffer.getNumSamples(),
-        0,
-        nullptr,
-        buffer.getNumChannels(),
-        const_cast<float**>(buffer.getArrayOfWritePointers()));
+        buffer.getWritePointer(0), 0, 1,
+        buffer.getWritePointer(1), 0, 1);
 }
 
 int FluidSynthModel::getNumPrograms()
