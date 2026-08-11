@@ -83,8 +83,8 @@ void FluidSynthModel::initialise() {
     synth = { new_fluid_synth(settings.get()), delete_fluid_synth };
     fluid_synth_set_sample_rate(synth.get(), currentSampleRate);
 
-    // I can't hear a damned thing
-    fluid_synth_set_gain(synth.get(), 2.0);
+    // Matches Songsterr's FluidSynth CLI (synth.gain=0.55); +11 dB (2.0) hard-clips dense material.
+    fluid_synth_set_gain(synth.get(), 0.55);
     
     // note: fluid_chan.c#fluid_channel_init_ctrl()
     // > Just like panning, a value of 64 indicates no change for sound ctrls
